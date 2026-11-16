@@ -117,6 +117,21 @@
         </div>
       </div>
     </div>
+    <div class="modal" id="stBulk" hidden role="dialog" aria-modal="true" aria-labelledby="sbTitle">
+      <div class="mbox wide">
+        <h3 id="sbTitle">Modification en masse des seuils de stock</h3>
+        <ol class="steps">
+          <li><b>Téléchargez le modèle Excel</b>, pré-rempli avec toutes les références et leurs seuils actuels.<br /><button class="btn" id="sbModel" type="button">Télécharger le modèle</button></li>
+          <li><b>Remplissez-le</b> : stock mini, stock de sécurité, seuil de réappro et stock maxi, en mètres. Il faut sécurité ≤ seuil ≤ maxi. Laissez une cellule vide pour ne rien changer ; les autres colonnes sont pour information.</li>
+          <li><b>Chargez le fichier rempli</b> (.xlsx ou .csv), ou collez les lignes copiées depuis Excel, titres compris.<br />
+            <input type="file" id="sbFile" accept=".xlsx,.xls,.csv" />
+            <textarea id="sbPaste" rows="3" placeholder="Collez ici les lignes copiées depuis Excel (avec la ligne de titres)"></textarea>
+            <button class="btn" id="sbRead" type="button">Analyser</button></li>
+        </ol>
+        <div id="sbReport" class="breport"></div>
+        <div class="mbtns"><button class="btn" id="sbClose" type="button">Fermer</button><button class="btn primary" id="sbApply" type="button" disabled>Appliquer les modifications</button></div>
+      </div>
+    </div>
     <div class="modal" id="slModal" hidden role="dialog" aria-modal="true" aria-labelledby="slTitle">
       <div class="mbox">
         <h3 id="slTitle">Seuils de stock</h3>
@@ -171,6 +186,16 @@
         <p class="note" id="exportMsg" role="status" style="margin: -6px 0 0"></p>
         <div class="role" id="roleBadge" role="status">
           <span class="dot"></span><span id="roleTxt">Vérification des droits…</span>
+        </div>
+        <div class="userbox" id="userBox" hidden>
+          <div class="uline" id="userLine" hidden><span class="uname" id="userName"></span></div>
+          <div class="ubtns savecard">
+            <button class="btn" id="bkSave" type="button">Sauvegarder</button
+            ><button class="btn" id="bkLoad" type="button">Restaurer</button
+            ><input type="file" id="bkFile" accept=".json,application/json" hidden />
+          </div>
+          <p class="note bknote" id="saveInfo"></p>
+          <button class="btn ulogout" id="logoutBtn" type="button" hidden>Se déconnecter</button>
         </div>
 
         <section class="grp" aria-label="Filtres">
@@ -267,8 +292,6 @@
         <details class="grp sidecard" open>
           <summary><h2>Éléments affichés</h2></summary>
           <label class="chk"><input type="checkbox" data-layer="charges" checked />Fardeaux</label>
-          <label class="chk"><input type="checkbox" data-layer="roofs" checked />Toits</label>
-          <label class="chk"><input type="checkbox" data-layer="walls" checked />Murs, portes et fenêtres</label>
           <label class="chk"><input type="checkbox" data-layer="cranes" checked />Portiques et ponts roulants</label>
           <label class="chk"><input type="checkbox" data-layer="vehicles" checked />Véhicules</label>
           <label class="chk"><input type="checkbox" data-layer="items" checked />Autres équipements</label>
@@ -302,9 +325,7 @@
           <summary><h2>Modifications</h2></summary>
           <p class="note" style="margin-top: 0" id="movesNote"></p>
           <ol class="moves" id="movesList"></ol>
-          <div style="display: flex; gap: 8px; flex-wrap: wrap">
-            <button class="btn" id="copyMoves" type="button">Copier la liste</button
-            ><button class="btn" id="undoMoves" type="button">Revenir au plan du classeur</button>
+          <div style="display: flex; gap: 8px; flex-wrap: wrap"><button class="btn" id="undoMoves" type="button">Revenir au plan du classeur</button>
           </div>
         </details>
       </aside>
@@ -319,7 +340,7 @@
         <section class="homepage" id="homePage" aria-label="Accueil">
           <div class="tiles">
             <button type="button" class="tile" data-go="maquette">
-              <span class="ttl">Maquette et plan de rangement</span
+              <span class="ttl">Maquette et plan de rangement (portique et cantilevers)</span
               ><svg viewBox="0 0 96 96" aria-hidden="true">
                 <rect x="14" y="10" width="5" height="78" fill="#34465a" />
                 <rect x="77" y="10" width="5" height="78" fill="#34465a" />
@@ -384,7 +405,7 @@
             </button>
           </div>
         </section>
-        <section class="topbar" aria-label="Chiffres clés">
+        <section class="topbar" id="topbar" aria-label="Chiffres clés">
           <div class="kpis" id="kpis"></div>
           <div class="card">
             <h2>Occupation des emplacements</h2>
@@ -396,6 +417,11 @@
             <div class="bars" id="bars"></div>
           </div>
         </section>
+        <div class="topTogWrap">
+          <button class="topToggle" id="topToggle" type="button" aria-expanded="true" aria-controls="topbar">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 15l6-6 6 6" /></svg>
+          </button>
+        </div>
 
         <main class="view">
           <div class="stage" id="stage">
@@ -519,28 +545,6 @@
 
         <section class="stockpage" id="stockPage" aria-label="Gestion du stock">
           <div class="kpis skpis" id="skpis"></div>
-          <div class="databar" id="dataBar" hidden>
-            <div class="dbinfo">
-              <span class="note" id="syncInfo"></span><span class="note bknote" id="saveInfo"></span>
-            </div>
-            <div class="dbctl" id="syncCard" hidden>
-              <label id="syncUrlRow" hidden
-                ><span class="sr">Adresse du tableau partagé</span
-                ><input id="syncUrlIn" autocomplete="off" placeholder="Adresse du tableau partagé (…/exec)"
-              /></label>
-              <label hidden
-                ><span class="sr">Code d’accès</span
-                ><input id="syncCodeIn" type="password" autocomplete="off" placeholder="Code d’accès"
-              /></label>
-              <button class="btn" id="syncBtn" type="button">Relier à un tableau partagé</button
-              ><button class="btn" id="syncOff" type="button" hidden>Se déconnecter</button>
-            </div>
-            <div class="dbctl savecard">
-              <button class="btn" id="bkSave" type="button">Sauvegarder</button
-              ><button class="btn" id="bkLoad" type="button">Restaurer</button
-              ><input type="file" id="bkFile" accept=".json,application/json" hidden />
-            </div>
-          </div>
           <section class="plan scard terrain">
             <div class="bar">
               <h2>
@@ -620,6 +624,7 @@
                 <option value="E">Cantilevers Est</option>
               </select>
               <button class="btn" id="stExport" type="button">Exporter (Excel)</button>
+              <button class="btn" id="stBulkOpen" type="button">Modification en masse</button>
               <button class="btn primary" id="mvNew" type="button">Nouveau mouvement</button>
             </div>
             <div class="scroll">
@@ -726,6 +731,34 @@
     </div>
 
     <!-- Bibliothèques -->
+    <div class="login" id="loginScr" hidden role="dialog" aria-modal="true" aria-labelledby="loginTitle">
+      <div class="lgcard">
+        <div class="lgbrand">
+          <svg class="lgmark" viewBox="0 0 140 72" aria-hidden="true">
+            <path d="M8 66h124" stroke="#8d949b" stroke-width="2.5" stroke-linecap="round" /><path d="M30 70l-12 0M118 70l-10 0" stroke="#5f666d" stroke-width="2" stroke-linecap="round" />
+            <path d="M22 62V40l16-6v28z" fill="#f28c13" /><path d="M22 46h16M22 52h16M22 58h16" stroke="#26292d" stroke-width="2" />
+            <path d="M42 62V18l22-12v56z" fill="#f7a123" /><path d="M64 6l10 6v50H64z" fill="#c96f0a" />
+            <path d="M42 26h22M42 34h22M42 42h22M42 50h22M42 58h22" stroke="#26292d" stroke-width="2.2" />
+            <path d="M80 62V22l14-8 14 8v40" fill="none" stroke="#c4c9ce" stroke-width="2.5" stroke-linejoin="round" />
+            <path d="M85 30h18M85 38h18M85 46h18M85 54h18" stroke="#c4c9ce" stroke-width="2" /><path d="M112 62V36l10 5v21" fill="none" stroke="#8d949b" stroke-width="2.2" stroke-linejoin="round" />
+          </svg>
+          <p class="lgword"><span>STOCKAGE</span><span class="or">FERRAILLES</span></p>
+          <p class="lgtag">GESTION · STOCK · PERFORMANCE</p>
+        </div>
+        <h1 id="loginTitle">Bienvenue</h1>
+        <p class="lgsub">Connectez-vous à votre espace de travail</p>
+        <form class="lgform" id="loginForm" novalidate>
+          <label class="lginput"><span class="sr">Identifiant</span><svg viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="0" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="7.5" r="4.2"/><path d="M3.8 21c.9-4.6 4.1-7.2 8.2-7.2s7.3 2.6 8.2 7.2z"/></svg><input id="loginId" name="username" autocomplete="username" autocapitalize="none" spellcheck="false" placeholder="Identifiant" /></label>
+          <label class="lginput"><span class="sr">Mot de passe</span><svg viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="0" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 10V7.5a5 5 0 0 1 10 0V10h1a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2zm2.2 0h5.6V7.5a2.8 2.8 0 0 0-5.6 0z"/></svg><input id="loginPwd" name="password" type="password" autocomplete="current-password" placeholder="Mot de passe" />
+            <button type="button" class="lgeye" id="loginEye" aria-label="Afficher le mot de passe" aria-pressed="false" title="Afficher le mot de passe">
+              <span class="off"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3l18 18M10.6 10.6a2 2 0 0 0 2.8 2.8M9.9 5.2A9.6 9.6 0 0 1 12 5c5.5 0 9 7 9 7a16 16 0 0 1-3.1 3.9M6.6 6.6C4.2 8.1 3 12 3 12s3.5 7 9 7a9 9 0 0 0 4-1"/></svg></span><span class="on"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12s3.5-7 9-7 9 7 9 7-3.5 7-9 7-9-7-9-7z"/><circle cx="12" cy="12" r="2.8"/></svg></span></button></label>
+          <p class="loginerr" id="loginErr" role="alert"></p>
+          <button class="lgbtn" id="loginBtn" type="submit"><span class="lgspin" aria-hidden="true"></span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 4h4a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-4M10 16l4-4-4-4M14 12H4"/></svg><span>Se connecter</span></button>
+        </form>
+        <p class="loginwait" id="loginWait" role="status">Connexion en cours…</p>
+        <p class="lgfoot"><svg viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="0" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2.5l7.5 3v6c0 4.6-3.2 8.4-7.5 10-4.3-1.6-7.5-5.4-7.5-10v-6z"/><path d="M9 12l2.2 2.2L15.5 10" fill="none" stroke="#26292d" stroke-width="2"/></svg>Accès réservé au personnel autorisé</p>
+      </div>
+    </div>
     <script src="three.min.js"></script>
     <script src="jspdf.umd.min.js"></script>
     <script src="xlsx.full.min.js"></script>
