@@ -31,6 +31,17 @@ function setSide(collapsed) {
 }
 $("sideToggle").addEventListener("click", () => setSide(!document.body.classList.contains("side-collapsed")));
 setSide(!!store.get("at1-side"));
+/* ---------- Bandeau des chiffres clés de la maquette (masquable pour voir la 3D en grand) ---------- */
+function setTop(collapsed) {
+  document.body.classList.toggle("top-collapsed", collapsed);
+  const b = $("topToggle"), l = collapsed ? "Afficher les chiffres clés" : "Masquer les chiffres clés";
+  b.setAttribute("aria-expanded", String(!collapsed));
+  b.setAttribute("aria-label", l);
+  b.title = l;
+  store.set("at1-top", collapsed);
+}
+$("topToggle").addEventListener("click", () => setTop(!document.body.classList.contains("top-collapsed")));
+setTop(!!store.get("at1-top"));
 
 /* ---------- Thème ---------- */
 document.documentElement.dataset.theme = "light"; // thème clair uniquement
@@ -568,7 +579,7 @@ $("hour").addEventListener("input", (e) => {
 });
 
 /* ---------- Sol ---------- */
-// textures dessinées dans la page, sur la zone dont le sol est refait : bitume, béton (portique), dalle béton armé avec joints sciés (cantilevers)
+// textures dessinées dans la page, sur la zone dont le sol est refait : enrobé (portique et reste de la zone), dalle béton armé avec joints sciés (cantilevers et allées)
 function texSol(kind) {
   const c = document.createElement("canvas");
   c.width = c.height = 256;
@@ -636,17 +647,7 @@ const SURF = {
 SITE.surf.forEach((s, i) =>
   poly(s.p, s.m === "582" ? 0.028 : 0.006 + (s.m === "43" ? 0 : 0.002 + i * 0.001), SURF[s.m] || mat(0xbfc4c8)),
 ); // parking au-dessus des voies du plan, sous les lignes des places
-// béton sous le portique (emprise de la zone à refaire côté portique)
-poly(
-  [
-    [108.9, -19.3],
-    [125.7, -19.3],
-    [125.7, 27.5],
-    [108.9, 27.5],
-  ],
-  0.009,
-  BETON,
-);
+// sous le portique : enrobé, comme le reste de la zone à refaire (décision du 12/11/2026) ; seuls les cantilevers et leurs allées sont en dalle armée
 // dalle béton armé : dessinée avec les allées (buildLanes), sous les racks visibles et leurs allées ; l’emplacement d’un rack retiré reste en bitume
 function track(x0, z0, x1, z1) {
   const len = Math.hypot(x1 - x0, z1 - z0),
@@ -1127,9 +1128,27 @@ SITE.cranes.forEach((k) => {
   const [x, z, zb, L, W, H] = k,
     top = zb < 3.5 ? Math.min(zb + H, 2.75) : zb + H,
     m = isPortique(x) ? galv : orange;
-  [-1, 1].forEach((s) => box(0.5, 0.6, L, m, x + (s * W) / 2, top - 0.3, z));
-  box(W + 0.6, 0.8, 0.8, m, x, top + 0.2, z - L * 0.12);
-  box(1.2, 0.8, 1.5, black, x, top - 0.55, z - L * 0.12);
+  [-1, 1].forEach((s) => box(0.5, 0.6, L, m, x + (s * W) / 2, top - 0.3, z)); // chemins de roulement
+  if (isPortique(x)) {
+    // portique de stockage, comme le modèle Mavimplant : pont à deux poutres (à 29 % et 49,5 % de la longueur depuis le bout nord),
+    // sommiers aux extrémités, chariot sur poutre entre les deux poutres (à 39 % de la largeur depuis l'ouest), palan et crochet
+    const zN = z - L / 2,
+      g1 = zN + 0.29 * L,
+      g2 = zN + 0.495 * L,
+      xt = x - W / 2 + 0.39 * W,
+      zt = (g1 + g2) / 2;
+    [g1, g2].forEach((gz) => {
+      box(W + 0.6, 0.7, 0.5, m, x, top + 0.15, gz); // poutre du pont
+      [-1, 1].forEach((s) => box(0.7, 0.45, 0.9, black, x + (s * W) / 2, top + 0.02, gz)); // sommier sur le chemin de roulement
+    });
+    box(0.55, 0.35, g2 - g1 + 1.2, black, xt, top + 0.68, zt); // poutre du chariot, posée sur les deux poutres
+    box(0.95, 0.85, 1.5, mat(0x2e9e44), xt, top + 0.2, zt + 0.4); // palan (moteur vert)
+    box(0.05, 1.7, 0.05, black, xt, top - 1.0, zt + 0.4); // câble
+    box(0.32, 0.28, 0.16, mat(0xf2c230), xt, top - 1.95, zt + 0.4); // crochet
+  } else {
+    box(W + 0.6, 0.8, 0.8, m, x, top + 0.2, z - L * 0.12);
+    box(1.2, 0.8, 1.5, black, x, top - 0.55, z - L * 0.12);
+  }
 });
 // pieds du portique = « Potence colonne » Mavimplant : poteau galvanisé + bras jaune de 4,14 m sous le chemin de roulement.
 // La position Mavimplant est le milieu du bras ; le poteau est au bout du bras, côté extérieur (rotation 0 → bras vers le sud, 180 → vers le nord).
@@ -1896,7 +1915,7 @@ function makeLabels() {
   label("zone camion et voie ferrée + 1 m de sécurité", POR.x0 + POR.w + 3.6, 0.9, (POR.bandS + POR.bandN) / 2, 0.6);
   label("zone verte à laisser libre", POR.x0 + POR.w / 2, 0.6, POR.zs + 1.1, 0.6);
 
-  label("Sol à refaire (environ 2 040 m²)", 76, 0.7, -15.8, 0.9);
+  label("Sol à refaire (environ 1 600 m²)", 96, 0.7, 15.6, 0.9);
 }
 
 /* ---------- Filtres et indicateurs ---------- */
@@ -2329,7 +2348,7 @@ $("undoMoves").addEventListener("click", async () => {
     }
   }
 });
-$("copyMoves").addEventListener("click", () => {
+if ($("copyMoves")) $("copyMoves").addEventListener("click", () => {
   const txt =
     changes()
       .map((x) => `${x.t}\t${x.c}\t${x.d}\t${x.txt}`)
@@ -3528,7 +3547,7 @@ function renderStock() {
       <td class="n"><b>${fmt0(x.q)}</b></td><td class="gcell">${gauge}</td>
       <td class="n">${fmt0(x.t.mini)}</td><td class="n">${fmt0(x.t.secu)}</td><td class="n">${fmt0(x.t.seuil)}</td><td class="n">${fmt0(x.t.maxi)}</td>
       <td class="n">${x.cov === null ? "–" : fmt0(x.cov) + " j"}</td><td class="n">${fmtE(x.val)}</td>
-      ${ed ? `<td class="act stact"><button type="button" data-mv="E">Entrée</button><button type="button" data-mv="S">Sortie</button><button type="button" data-mv="A">Inventaire</button><button type="button" data-sl="1">Seuils</button></td>` : ""}</tr>`;
+      ${ed ? `<td class="act stact"><button type="button" data-sl="1">Seuils</button></td>` : ""}</tr>`;
     })
     .join("");
   $("stActTh").style.display = ed ? "" : "none";
@@ -3904,20 +3923,15 @@ $("tabHome").addEventListener("click", () => {
   if (location.hash) history.replaceState(null, "", location.pathname + location.search);
   setPage("home");
 });
-$("tabMaq").addEventListener("click", () => {
-  location.hash = "maquette";
-});
-document.querySelectorAll(".tile[data-go]").forEach((t) =>
-  t.addEventListener("click", () => {
-    location.hash = t.dataset.go;
-  }),
-);
-$("tabStock").addEventListener("click", () => {
-  location.hash = "stock";
-});
-$("tabLog").addEventListener("click", () => {
-  location.hash = "etiquettes";
-});
+// navigation : l’adresse (#maquette, #stock…) suit la page, mais un clic change toujours de page, même si l’adresse est déjà la bonne
+function goPage(h) {
+  if (location.hash === "#" + h) setPage(pageFromHash());
+  else location.hash = h;
+}
+$("tabMaq").addEventListener("click", () => goPage("maquette"));
+document.querySelectorAll(".tile[data-go]").forEach((t) => t.addEventListener("click", () => goPage(t.dataset.go)));
+$("tabStock").addEventListener("click", () => goPage("stock"));
+$("tabLog").addEventListener("click", () => goPage("etiquettes"));
 window.addEventListener("hashchange", () => {
   if (!openFromHash()) setPage(pageFromHash());
 });
@@ -3999,20 +4013,50 @@ function terrainShow(item) {
       ps = piecesOf(r.c);
     }
   }
+  const ICO = (d) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
+  const where = (a) => {   // « MIL-T1-005 » → « Cantilevers milieu · travée 1 · face A · niveau 5 »
+    const m = String(a).match(/^(MIL|EST)-T(\d)-(\d{3})$/);
+    if (!m) { const p = String(a).match(/^POR-(\d+)$/); return p ? `Sous le portique · pile ${+p[1]}` : ""; }
+    const z = m[1] === "MIL" ? "M" : "E", t = +m[2], n = +m[3], L = LPF(z + t), face = n > L ? "B" : "A", lv = face === "A" ? n : n - L;
+    return `${ZLAB[z]} · travée ${t} · face ${face} · niveau ${lv}${lv === 1 ? " (pieds)" : ""}`;
+  };
   if (!r) {
-    box.innerHTML = `<div class="taddr">${esc(here)}</div><div class="tsub">${ZLAB[item.z] || ""}</div><p class="tempty">Emplacement libre.</p>`;
+    box.innerHTML = `<div class="tc"><div class="tc-head"><div><span class="tc-adr">${esc(here)}</span><span class="tc-where">${esc(where(here))}</span></div><span class="tc-chip" style="background:#868e96">Libre</span></div><p class="tempty">Aucune référence n’est rangée à cet emplacement.</p></div>`;
+    delete box.dataset.c;
     return;
   }
   recompute();
   const q = LEVELS[r.c] ?? (STOCK0[r.c] ? STOCK0[r.c].q : 0),
     s = STOCK0[r.c] ? statusOf(r.c, q) : "N";
   const adrs = ps.map((p) => addr(p.z, p.s)),
+    main = here || adrs[0] || "–",
+    others = adrs.filter((x) => x !== main),
     next = countDue(r);
-  box.innerHTML = `<div class="taddr">${esc(here || adrs[0] || "–")}</div>${adrs.length > 1 ? `<div class="tsub">Aussi : ${esc(adrs.filter((a) => a !== (here || adrs[0])).join(", "))}</div>` : ""}
-    <div class="tref"><b>${esc(r.c)}</b> · ${esc(r.d)}</div>
-    <div class="tgrid"><div><span>Stock</span><b>${fmt0(q)} m</b></div><div><span>Statut</span><b><span class="chip" style="background:${STAT[s].col}">${STAT[s].lab}</span></b></div>
-      <div><span>Longueur</span><b>${r.l} m</b></div><div><span>Classe</span><b>${esc(KLAB[r.k] || r.k)}</b></div><div><span>Prochain comptage</span><b>${dstr(next)}</b></div></div>
-    <div class="tbtns"><button type="button" class="tbtn e" data-tmv="E">Entrée</button><button type="button" class="tbtn s" data-tmv="S">Sortie</button><button type="button" class="tbtn a" data-tmv="A">Inventaire</button></div>`;
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const dd = Math.round((new Date(next).setHours(0, 0, 0, 0) - today.getTime()) / DAY),
+    rel = dd < 0 ? `<small class="late">en retard de ${-dd} j</small>` : `<small>${dd === 0 ? "aujourd’hui" : "dans " + dd + " j"}</small>`;
+  const b0 = STOCK0[r.c], cov = b0 && b0.conso > 0 ? Math.round(q / (b0.conso / 365)) : null;
+  let gauge = "";
+  if (b0) {
+    const t = seuilsOf(r.c), mx = Math.max(t.maxi, t.seuil, q) * 1.15 || 1, pc = (v) => Math.max(0, Math.min(100, (v / mx) * 100)).toFixed(1);
+    gauge = `<div class="tc-gauge" role="img" aria-label="Stock ${fmt0(q)} m, seuil ${fmt0(t.seuil)} m, maxi ${fmt0(t.maxi)} m"><i style="width:${pc(q)}%;background:${STAT[s].col}"></i><u class="sl" style="left:${pc(t.seuil)}%"></u><u style="left:${pc(t.maxi)}%"></u></div>
+      <div class="tc-gl"><span><i class="lg sl"></i>Seuil de réappro <b>${fmt0(t.seuil)} m</b></span><span><i class="lg"></i>Maxi <b>${fmt0(t.maxi)} m</b></span></div>`;
+  }
+  box.innerHTML = `<div class="tc">
+    <div class="tc-head"><div><span class="tc-adr">${esc(main)}</span><span class="tc-where">${esc(where(main))}</span></div><span class="tc-chip" style="background:${STAT[s].col}">${STAT[s].lab}</span></div>
+    <div class="tc-ref"><span class="tc-code">${esc(r.c)}</span><span class="tc-des">${esc(r.d)}</span>${others.length ? `<span class="tc-also">Aussi rangée en ${esc(others.join(", "))}</span>` : ""}</div>
+    <div class="tc-stock"><div class="tc-qty"><b>${fmt0(q)}</b><span>mètres en stock</span></div><div class="tc-gw">${gauge}</div></div>
+    <dl class="tc-facts">
+      <div><dt>Longueur</dt><dd>${r.l} m</dd></div>
+      <div><dt>Classe</dt><dd><i class="kdot" style="background:${KCOL[r.k] || "#868e96"}"></i>${esc(KLAB[r.k] || r.k)}</dd></div>
+      <div><dt>Prochain comptage</dt><dd>${dstr(next)} ${rel}</dd></div>
+      <div><dt>Couverture</dt><dd>${cov === null ? "–" : cov <= 60 ? fmt0(cov) + " jours" : cov < 730 ? Math.round(cov / 30) + " mois" : (cov / 365).toFixed(1).replace(".", ",") + " ans"}</dd></div>
+    </dl>
+    <div class="tbtns">
+      <button type="button" class="tbtn e" data-tmv="E">${ICO('<path d="M12 4v12M6 10l6 6 6-6M4 20h16"/>')}Entrée</button>
+      <button type="button" class="tbtn s" data-tmv="S">${ICO('<path d="M12 20V8M6 14l6-6 6 6M4 4h16"/>')}Sortie</button>
+      <button type="button" class="tbtn a" data-tmv="A">${ICO('<rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 4.5h6M9 12l2 2 4-4"/>')}Inventaire</button>
+    </div></div>`;
   box.dataset.c = r.c;
 }
 // ----- inventaire tournant -----
@@ -4689,12 +4733,68 @@ function planCoteSVG() {
     e += `<text x="40" y="${G - 950}" font-size="130" fill="#6b7782">bord du stockage</text><text x="2600" y="${G - 400}" font-size="140" fill="#7a4a00" text-anchor="middle">barres</text>`;
     e = svg([-1000, 150, 6800, G + 900 - 150], e);
   }
+  // ----- 7. plan du sol à refaire (relevé du projet Mavimplant « Phase 1 stockage F », coordonnées en cm ramenées en mm) -----
+  // décision du 12/11/2026 : dalle armée sous les cantilevers et leurs allées, enrobé partout ailleurs, y compris sous le portique
+  let so = "";
+  {
+    const MX = (x) => (x - 44440) * 10, MY = (y) => (y + 42630) * 10, pt = (q) => q.map(([x, y]) => [MX(x), MY(y)]);
+    const ZONE = pt([[48569, -37976], [46899, -37976], [46899, -38709], [44440, -38709], [44440, -42048], [46893, -42048], [46893, -42625], [48569, -42630]]);
+    const PORT = pt([[48569, -37976], [46899, -37976], [46899, -38709], [46893, -42048], [46893, -42625], [48569, -42630]]);   // surface Mavimplant côté portique
+    const aire = (q) => Math.abs(q.reduce((s, [x, y], i) => { const [u, v] = q[(i + 1) % q.length]; return s + x * v - u * y; }, 0)) / 2 / 1e6;
+    const poly = (q, fill, extra = "") => `<polygon points="${q.map((c) => c.join(",")).join(" ")}" fill="${fill}" ${extra}/>`;
+    const DW = 2 * 3000 + NR * CANT.base * 1000 + (NR - 1) * 3000, DD = CANT.len * 1000 + 3000;   // dalle d'une rangée : allées de 3 000 + racks
+    const W = MX(48569), xs = MX(46899), xn = MX(46893);   // largeur totale, bord est de la partie cantilevers (au sud, au nord)
+    const x0 = 758, x1 = x0 + DW, yE = 5820, yM = 28990 - DD;   // dalle à 758 du bord ouest ; rangée Est au ras de la zone hachurée ; allée sud de la rangée milieu à y = -39 731
+    const aP = 778.18, aZ = aP + 819.64, aD = 2 * DW * DD / 1e6, aC = aZ - aP - aD;   // surfaces calculées sur les coordonnées exactes des deux surfaces Mavimplant (cotes au cm)
+    const m2 = (v) => v.toLocaleString("fr-FR", { minimumFractionDigits: 1, maximumFractionDigits: 1 }).replace(/[\u202f\u00a0]/g, " ") + " m²";
+    fs = 900; tk = 450; sw = 60; gp = 320;
+    let o = `<defs><pattern id="solArm" width="1200" height="1200" patternUnits="userSpaceOnUse"><rect width="1200" height="1200" fill="#d4e3f6"/><path d="M0 600H1200M600 0V1200" stroke="#6f95c9" stroke-width="40"/></pattern></defs>`;
+    o += poly(ZONE, "#c4c9ce", `stroke="${INK}" stroke-width="80" stroke-linejoin="round"`);   // enrobé
+    o += `<line x1="${xs}" y1="${MY(-38709)}" x2="${xn}" y2="${MY(-42048)}" stroke="${INK}" stroke-width="30" stroke-dasharray="300 220"/>`;   // limite entre les deux surfaces Mavimplant
+    [yE, yM].forEach((y) => (o += `<rect x="${x0}" y="${y}" width="${DW}" height="${DD}" fill="url(#solArm)" stroke="#2f5d9e" stroke-width="50"/>`));
+    o += poly(ZONE, "none", `stroke="${INK}" stroke-width="80" stroke-linejoin="round"`);
+    // voies ferrées (repères) : entre les rangées et au sud
+    const rail = (xa, ya, xb, yb) => `<g stroke="#4a525a" stroke-linecap="butt"><line x1="${xa}" y1="${ya}" x2="${xb}" y2="${yb}" stroke-width="1000" stroke="#8a7f70" opacity=".55"/><line x1="${xa}" y1="${ya - 300}" x2="${xb}" y2="${yb - 300}" stroke-width="70"/><line x1="${xa}" y1="${ya + 300}" x2="${xb}" y2="${yb + 300}" stroke-width="70"/></g>`;
+    const ys = (x) => MY(-39156) + (MY(-39276) - MY(-39156)) * (x - MX(23401)) / (MX(49815) - MX(23401));
+    o += rail(0, MY(-40700), MX(46803), MY(-40700)) + rail(0, ys(0), W, ys(W));
+    const lab = (x, y, t1, t2, c = INK) => `<text x="${x}" y="${y}" font-size="1150" font-weight="700" fill="${c}" text-anchor="middle">${t1}</text>` + (t2 ? `<text x="${x}" y="${y + 1250}" font-size="850" fill="${c}" text-anchor="middle">${t2}</text>` : "");
+    o += lab((x0 + x1) / 2, yE + DD / 2, "DALLE ARMÉE · rangée Est", `${NR} cantilevers et leurs allées`, "#1f4778");
+    o += lab((x0 + x1) / 2, yM + DD / 2, "DALLE ARMÉE · rangée milieu", `${NR} cantilevers et leurs allées`, "#1f4778");
+    o += lab((xs + W) / 2, 22500, "ENROBÉ", "sous le portique") + lab(11000, 37600, "ENROBÉ");
+    o += `<text x="700" y="${MY(-40700) - 700}" font-size="800" fill="#4a525a">voie ferrée</text><text x="700" y="${ys(700) - 700}" font-size="800" fill="#4a525a">voie ferrée</text>`;
+    // cotes du contour (relevé Mavimplant)
+    o += hdim(0, W, -4400, 0, f(W)) + `<path d="M0 0V5820" stroke="${DIM}" stroke-width="${sw}" stroke-dasharray="200 160"/>`;   // rappel jusqu’à l’angle nord-ouest
+    o += hdim(xn, W, -1700, 0, f(W - xn));
+    o += hdim(0, xn, 3300, 5820, f(xn));
+    o += hdim(0, xs, 42300, 39210, f(xs), false);
+    o += hdim(xs, W, 49600, 46540, f(W - xs), false);
+    o += vdim(5820, 39210, -2900, 0, f(33390));
+    o += vdim(0, 46540, W + 2900, W, f(46540), false);
+    o += vdim(39210, 46540, xs - 2300, xs, f(7330));
+    o += vdim(50, 5820, xn - 2300, xn, f(5770));
+    // cotes des dalles armées
+    o += hdim(0, x0, 31600, 28990, f(x0), false) + hdim(x0, x1, 31600, 28990, f(DW), false) + hdim(x1, xs, 31600, 28990, f(xs - x1), false);
+    o += vdim(yE, yE + DD, x1 + 2800, x1, f(DD), false) + vdim(yE + DD, yM, x1 + 2800, x1, f(yM - yE - DD), false) + vdim(yM, yM + DD, x1 + 2800, x1, f(DD), false) + vdim(yM + DD, 39210, x1 + 2800, x1, f(39210 - yM - DD), false);
+    // nord
+    o += `<g transform="translate(${W - 3000} 2600)"><path d="M0 -1500L700 600L0 200L-700 600Z" fill="${INK}"/><text x="0" y="1700" font-size="900" font-weight="700" text-anchor="middle" fill="${INK}">N</text></g>`;
+    // légende et surfaces
+    const T = 53600, rows = [["url(#solArm)", "Dalle armée", "sous les cantilevers et leurs allées (2 rangées de " + f(DW) + " × " + f(DD) + ")", aD], ["#c4c9ce", "Enrobé", "sous le portique", aP], ["#c4c9ce", "Enrobé", "autour des cantilevers et aux abords des voies", aC]];
+    o += `<text x="0" y="${T}" font-size="1000" font-weight="700" fill="${INK}">Surfaces du sol à refaire</text>`;
+    rows.forEach(([fill, t, d, v], i) => {
+      const y = T + 900 + i * 1700;
+      o += `<rect x="0" y="${y}" width="2200" height="1200" fill="${fill}" stroke="${INK}" stroke-width="40"/><text x="2800" y="${y + 950}" font-size="950" font-weight="700" fill="${INK}">${t}</text><text x="9800" y="${y + 950}" font-size="850" fill="#4b5761">${d}</text><text x="${W}" y="${y + 950}" font-size="950" font-weight="700" fill="${INK}" text-anchor="end">${m2(v)}</text>`;
+    });
+    const yt = T + 900 + 3 * 1700;
+    o += `<line x1="0" y1="${yt - 300}" x2="${W}" y2="${yt - 300}" stroke="${INK}" stroke-width="40"/><text x="0" y="${yt + 900}" font-size="950" font-weight="700" fill="${INK}">Total du sol à refaire</text><text x="${W}" y="${yt + 900}" font-size="950" font-weight="700" fill="${INK}" text-anchor="end">${m2(aZ)}</text>`;
+    so = svg([-6200, -7000, W + 14600, yt + 2400 + 7000], `<style>#solPlan text{paint-order:stroke;stroke:#ffffff;stroke-width:140px;stroke-linejoin:round}</style><g id="solPlan">${o}</g>`);   // halo blanc : textes lisibles sur les voies et les motifs
+  }
   return `<h4>Cantilevers</h4><figure><figcaption>Vue de profil d’un rack (${tg === "all" ? "milieu T1" : rackName(rk)}, ${L} niveaux par face)</figcaption>${pv}${leg}</figure>
     <figure><figcaption>Vue de face d’un rack (${RCFG.bras} bras par niveau)</figcaption>${fv}</figure>
     <figure class="wide"><figcaption>Implantation vue de dessus : les ${["M", "E"].reduce((a, z) => a + visRacks(z).length, 0)} cantilevers, les allées de 3 000, la voie ferrée et le recul jusqu’au portique</figcaption>${pz}</figure>
     <h4>Portique</h4><figure><figcaption>Vue de dessus : ${POR.n} emplacements (pile 500, allée 800) et poteaux du portique</figcaption>${d}</figure>
     <figure class="wide"><figcaption>Détail vue de dessus : quatre emplacements, allées de passage, ranchers et cales</figcaption>${q}</figure>
-    <figure><figcaption>Détail d’une pile vue en bout (extrémité côté cantilevers, l’autre côté est symétrique) : 5 ranchers de 620 de chaque côté, entraxe 3 500</figcaption>${e}</figure>`;
+    <figure><figcaption>Détail d’une pile vue en bout (extrémité côté cantilevers, l’autre côté est symétrique) : 5 ranchers de 620 de chaque côté, entraxe 3 500</figcaption>${e}</figure>
+    <h4>Sol à refaire</h4><figure class="wide"><figcaption>Plan du sol à refaire : dalle armée sous les cantilevers et leurs allées, enrobé partout ailleurs, y compris sous le portique (relevé du projet Mavimplant « Phase 1 stockage F »)</figcaption>${so}</figure>`;
 }
 function openPlanCote() {
   $("coteBody").innerHTML = planCoteSVG();
@@ -4906,18 +5006,15 @@ const SYNC = {
   hooked: false,
 };
 const syncUrl = () => String((window.AT1_SYNC && window.AT1_SYNC.url) || store.get("at1-sync-url") || "").trim();
-const cfgCode = () => String((window.AT1_SYNC && window.AT1_SYNC.code) || "").trim(); // code écrit dans sync-config.js : connexion automatique pour tous
-const syncCode = () => cfgCode() || store.get("at1-sync-code") || "";
+const syncToken = () => store.get("at1-token") || "";   // clé de session remise par le tableau partagé après connexion
 function bkVis() {
-  // Sauvegarder / Restaurer : masqués une fois le tableur partagé connecté, sauf tant qu’il est vide (premier transfert des données)
-  let db = null;
-  try {
-    db = SYNC.db;
-  } catch (e) {}
-  const show = canEditPlan() && (!db || (!db.S.mvts.length && !db.S.seuils));
+  // Sauvegarder / Restaurer : administrateur connecté, ou site utilisé seul sur cet appareil
+  let u = null;
+  try { u = SYNC.user; } catch (e) {}
+  const show = ROLE === "local" || !!(u && u.droit === "admin");
   document.querySelector(".savecard").hidden = !show;
   $("saveInfo").hidden = !show;
-  dataBarVis();
+  $("userBox").hidden = !u && !show;
 }
 async function syncCall(action, extra) {
   const ctl = new AbortController(),
@@ -4928,7 +5025,7 @@ async function syncCall(action, extra) {
       headers: { "Content-Type": "text/plain;charset=utf-8" },
       redirect: "follow",
       signal: ctl.signal,
-      body: JSON.stringify({ action, code: syncCode(), ...extra }),
+      body: JSON.stringify({ action, token: syncToken(), ...extra }),
     });
     if (!r.ok) throw new Error("reseau");
     try {
@@ -5057,52 +5154,8 @@ function sheetDb() {
   };
   return db;
 }
-const syncShown = () => !SUPPLIER && !SHARED && (MODE !== "consultation" || !!syncUrl());
-function dataBarVis() {
-  const b = $("dataBar");
-  if (b) b.hidden = $("syncCard").hidden && document.querySelector(".savecard").hidden;
-}
-function syncUI(state, detail) {
-  $("syncCard").hidden = !syncShown();
-  $("syncInfo").hidden = $("syncCard").hidden;
-  dataBarVis();
-  if ($("syncCard").hidden) return;
-  const fixed = !!(window.AT1_SYNC && window.AT1_SYNC.url),
-    conn = state === "ok" || state === "offline",
-    form = state !== "off" || SYNC.form,
-    auto = !!cfgCode();
-  $("syncUrlRow").hidden = fixed || conn || !form;
-  $("syncUrlIn").value = $("syncUrlIn").value || syncUrl();
-  $("syncCodeIn").closest("label").hidden = conn || !form || auto;
-  $("syncBtn").hidden = conn || (auto && state !== "off");
-  $("syncOff").hidden = !conn || auto;
+function syncUI() {
   bkVis();
-  $("syncBtn").textContent = form ? "Se connecter" : "Relier à un tableau partagé";
-  const el = $("syncInfo");
-  el.className = "note";
-  const T = {
-    off: "Données enregistrées sur cet appareil.",
-    code: "Tableau partagé : saisissez votre code d’accès.",
-    connecting: "Connexion au tableau partagé…",
-    badcode: "Code d’accès incorrect.",
-    badurl: "Adresse du tableau partagé incorrecte, ou déploiement non accessible.",
-    badcfg: "Le code écrit dans sync-config.js est refusé par le tableau partagé.",
-    err: "Connexion impossible au tableau partagé" + (detail ? " (" + detail + ")" : "") + ".",
-  };
-  if (state === "ok") {
-    el.classList.add("ok");
-    el.textContent =
-      "Tableau partagé · connecté en " +
-      (SYNC.role === "edition" ? "édition" : "lecture") +
-      " · à jour à " +
-      new Date(SYNC.at).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
-  } else if (state === "offline") {
-    el.classList.add("warn");
-    el.textContent = "Tableau partagé hors ligne · nouvelle tentative automatique";
-  } else {
-    if (state === "badcode" || state === "badurl" || state === "err") el.classList.add("warn");
-    el.textContent = T[state || "off"];
-  }
 }
 async function syncTick() {
   if (!SYNC.db || document.hidden) return;
@@ -5111,10 +5164,10 @@ async function syncTick() {
     SYNC.at = Date.now();
     syncUI("ok");
   } catch (e) {
+    if (e.message === "session") return sessionLost();
     syncUI("offline");
   }
 }
-// chaque écriture rafraîchit aussi l’état du bandeau (le tableur n’est plus vide après le premier mouvement)
 async function syncStart(role) {
   const db = sheetDb();
   await db.refresh(true);
@@ -5148,74 +5201,180 @@ async function syncStart(role) {
   }
   syncUI("ok");
 }
-async function syncConnect(code) {
-  syncUI("connecting");
-  if (!cfgCode()) store.set("at1-sync-code", code);
-  let a;
-  try {
-    a = await syncCall("auth");
-  } catch (e) {
-    syncUI(e.message === "reponse" ? "badurl" : "offline");
-    if (!SYNC.db) {
-      setRole(MODE === "consultation" ? "viewer" : "local");
-      initStock(null, null);
-    }
-    return false;
-  }
-  if (!a.ok) {
-    if (!cfgCode()) store.set("at1-sync-code", "");
-    syncUI(a.err === "code" ? (cfgCode() ? "badcfg" : "badcode") : "err", a.err);
-    if (!SYNC.db) {
-      setRole(MODE === "consultation" ? "viewer" : "local");
-      initStock(null, null);
-    }
-    return false;
-  }
-  try {
-    await syncStart(a.role);
-  } catch (e) {
-    syncUI("err", e.message);
-    return false;
-  }
-  return true;
+/* ---------- Connexion : identifiant, mot de passe et profil (comptes de l’onglet « Utilisateurs » du tableau partagé) ---------- */
+// Administrateur : tout, y compris sauvegarde et restauration · Éditeur : mouvements, seuils et plan de rangement · Lecteur : consultation
+function showLogin(msg) {
+  document.documentElement.classList.remove("auth-wait", "auth-login");
+  $("loginScr").classList.remove("checking");
+  $("loginScr").hidden = false;
+  document.body.classList.add("locked");
+  $("loginErr").textContent = msg || "";
+  setTimeout(() => $(($("loginId").value ? "loginPwd" : "loginId")).focus(), 60);
 }
-async function syncBoot() {
-  if (!syncUrl()) {
-    setRole(MODE === "consultation" ? "viewer" : "local");
-    initStock(null, null);
-    syncUI("off");
-    return;
-  }
-  const code = syncCode();
-  if (!code) {
-    setRole(MODE === "consultation" ? "viewer" : "local");
-    initStock(null, null);
-    syncUI("code");
-    return;
-  }
-  await syncConnect(code);
+function sessionLost() {
+  store.set("at1-token", "");
+  store.set("at1-user", null);
+  clearInterval(SYNC.timer);
+  showLogin("Votre session a expiré ou votre compte a changé : reconnectez-vous.");
 }
-$("syncBtn").addEventListener("click", async () => {
-  if (!SYNC.form && !syncUrl()) {
-    SYNC.form = true;
-    syncUI("off");
-    setTimeout(() => $("syncUrlIn").focus(), 30);
-    return;
-  } // premier clic : affiche les champs
-  const u = $("syncUrlIn").value.trim(),
-    c = $("syncCodeIn").value.trim();
-  if (u && !(window.AT1_SYNC && window.AT1_SYNC.url)) store.set("at1-sync-url", u);
-  if (!syncUrl()) return syncUI("off");
-  if (!c) return syncUI("code");
-  $("syncBtn").disabled = true;
-  await syncConnect(c);
-  $("syncBtn").disabled = false;
-  $("syncCodeIn").value = "";
+async function syncAfterAuth(a) {
+  SYNC.user = { nom: a.nom || "", profil: a.profil || "", droit: a.droit || "lecture" };
+  store.set("at1-user", SYNC.user); // dernier utilisateur connecté : repris si la vérification de session échoue pour une autre raison
+  $("loginScr").classList.remove("checking");
+  document.documentElement.classList.remove("auth-wait", "auth-login");
+  $("loginScr").hidden = true;
+  document.body.classList.remove("locked");
+  $("userName").textContent = SYNC.user.nom;
+  $("userLine").hidden = false;
+  $("logoutBtn").hidden = false;
+  if (SYNC.user.nom) store.set("at1-nom", SYNC.user.nom);   // nom proposé dans les mouvements de stock
+  await syncStart(SYNC.user.droit === "lecture" ? "lecture" : "edition");
+}
+$("loginForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const id = $("loginId").value.trim(), mdp = $("loginPwd").value;
+  if (!id || !mdp) { $("loginErr").textContent = "Saisissez votre identifiant et votre mot de passe."; return; }
+  $("loginBtn").disabled = true;
+  $("loginBtn").classList.add("busy");
+  $("loginErr").textContent = "";
+  try {
+    const r = await syncCall("login", { id, mdp });
+    if (!r.ok) { $("loginErr").textContent = r.err === "identifiants" ? "Identifiant ou mot de passe incorrect." : "Connexion impossible (" + r.err + ")."; return; }
+    store.set("at1-token", r.token);
+    $("loginPwd").value = "";
+    $("loginErr").textContent = "";
+    if (location.hash) history.replaceState(null, "", location.pathname + location.search);   // adresse remise à zéro : l’accueil
+    setPage("home");   // après la connexion : directement la page d’accueil, avant la fermeture de l’écran de connexion
+    await syncAfterAuth(r);
+  } catch (err) {
+    $("loginErr").textContent = err.message === "reponse" ? "Le tableau partagé ne répond pas correctement : vérifiez son adresse et son déploiement." : "Pas de connexion réseau : réessayez.";
+  } finally {
+    $("loginBtn").disabled = false;
+    $("loginBtn").classList.remove("busy");
+  }
 });
-$("syncOff").addEventListener("click", () => {
-  store.set("at1-sync-code", "");
+$("loginEye").addEventListener("click", () => {
+  const show = $("loginPwd").type === "password", l = show ? "Masquer le mot de passe" : "Afficher le mot de passe";
+  $("loginPwd").type = show ? "text" : "password";
+  $("loginEye").setAttribute("aria-pressed", String(show));
+  $("loginEye").setAttribute("aria-label", l);
+  $("loginEye").title = l;
+  $("loginPwd").focus();
+});
+$("logoutBtn").addEventListener("click", async () => {
+  try { await syncCall("logout"); } catch (e) {}
+  store.set("at1-token", "");
+  store.set("at1-user", null);
   location.reload();
 });
+async function syncBoot() {
+  if (!syncUrl()) {   // pas de tableau partagé : le site fonctionne seul sur cet appareil
+    document.documentElement.classList.remove("auth-wait", "auth-login");
+    setRole(MODE === "consultation" ? "viewer" : "local");
+    initStock(null, null);
+    bkVis();
+    return;
+  }
+  setRole("viewer");
+  initStock(null, null);
+  if (!syncToken()) return showLogin();
+  // session enregistrée : écran « Connexion en cours… » pendant la vérification (pas d'affichage de la page avant)
+  $("loginScr").classList.add("checking");
+  $("loginScr").hidden = false;
+  document.body.classList.add("locked");
+  const last = store.get("at1-user");
+  let user = null;
+  try {
+    const a = await syncCall("auth");
+    if (a.ok) user = a;
+    else if (a.err === "session" || !last) { store.set("at1-token", ""); return showLogin(a.err === "session" ? "Votre session a expiré : reconnectez-vous." : ""); }
+  } catch (e) {
+    if (!last) return showLogin("Le tableau partagé est injoignable : vérifiez le réseau, puis connectez-vous.");
+  }
+  // session reconnue, ou réponse inattendue / réseau lent : on reprend le dernier utilisateur connecté ;
+  // si la session n'est plus valable, le premier échange avec le tableau le dit et renvoie à la connexion
+  try {
+    await syncAfterAuth(user || last);
+  } catch (e) {
+    if (e && e.message === "session") return sessionLost();
+    showLogin("Le tableau partagé ne répond pas : vérifiez le réseau, puis connectez-vous.");
+  }
+}
+
+/* ---------- Stock par référence : modification en masse des seuils (même principe que le plan de rangement) ---------- */
+const SB_HEAD = ["Code", "Désignation", "Adresse", "Stock actuel (m)", "Couverture (jours)", "Valeur (€)", "Stock mini (m)", "Stock de sécurité (m)", "Seuil de réappro (m)", "Stock maxi (m)"];
+const SB_KEYS = ["mini", "secu", "seuil", "maxi"];
+let SBULK = null;
+function sbModel() {
+  if (!window.XLSX) { planMsg("Le module Excel n’est pas chargé.", true); return; }
+  const rows = REFS.filter((r) => STOCK0[r.c]).map((r) => {
+      const s0 = seuilsOf(r.c), b = STOCK0[r.c], q = LEVELS[r.c] ?? 0;
+      return [r.c, r.d, piecesOf(r.c).map((p) => addr(p.z, p.s)).join(", "), Math.round(q * 10) / 10, b.conso > 0 ? Math.round(q / (b.conso / 365)) : "", Math.round(q * (b.cu || 0)), s0.mini, s0.secu, s0.seuil, s0.maxi];
+    })
+    .sort((a, b) => String(a[2]).localeCompare(String(b[2])));
+  const aoa = [SB_HEAD].concat(rows), wb = XLSX.utils.book_new(), ws = XLSX.utils.aoa_to_sheet(aoa);
+  ws["!cols"] = [12, 34, 22, 15, 17, 12, 14, 19, 19, 15].map((w) => ({ wch: w }));
+  ws["!autofilter"] = { ref: "A1:J" + aoa.length };
+  XLSX.utils.book_append_sheet(wb, ws, "Seuils");
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([["Modification en masse des seuils de stock"], [""], ["Colonnes modifiables : Stock mini, Stock de sécurité, Seuil de réappro, Stock maxi (en mètres). Stock actuel, Couverture et Valeur sont donnés pour information."], ["Règle : stock de sécurité ≤ seuil de réappro ≤ stock maxi."], ["Laissez une cellule vide pour ne rien changer. Ne modifiez pas les codes."], ["Ensuite : Gestion du stock > Stock par référence > Modification en masse > charger ce fichier > Analyser > Appliquer."]]), "Mode d’emploi");
+  XLSX.writeFile(wb, "Seuils_stock_AT1_" + new Date().toISOString().slice(0, 10) + ".xlsx");
+}
+function sbAnalyse(rows) {
+  const norm = (v) => String(v ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  const hi = rows.findIndex((r) => r.some((v) => norm(v) === "code"));
+  if (hi < 0) return { err: "Ligne de titres introuvable : la colonne « Code » est obligatoire." };
+  const H = rows[hi].map(norm), col = (re) => H.findIndex((v) => re.test(v));
+  const ci = col(/^code$/), idx = { mini: col(/mini/), secu: col(/securite/), seuil: col(/seuil/), maxi: col(/maxi/) };
+  if (SB_KEYS.every((k) => idx[k] < 0)) return { err: "Aucune colonne de seuil trouvée (Stock mini, Stock de sécurité, Seuil de réappro, Stock maxi)." };
+  const num = (v) => { const t = String(v ?? "").replace(/[\s\u00a0\u202f]/g, "").replace(",", "."); return t === "" ? null : Number(t); };
+  const ch = {}, errs = [];
+  rows.slice(hi + 1).forEach((r, i) => {
+    const code = String(r[ci] ?? "").trim(); if (!code) return;
+    if (!STOCK0[code]) { errs.push(`ligne ${hi + i + 2} : code ${code} inconnu`); return; }
+    const cur = seuilsOf(code), v = { ...cur };
+    for (const k of SB_KEYS) { if (idx[k] < 0) continue; const n = num(r[idx[k]]); if (n === null) continue; if (isNaN(n) || n < 0) { errs.push(`${code} : valeur « ${r[idx[k]]} » invalide`); return; } v[k] = Math.round(n * 100) / 100; }
+    if (v.seuil < v.secu || v.maxi < v.seuil) { errs.push(`${code} : il faut sécurité ≤ seuil ≤ maxi`); return; }
+    if (SB_KEYS.some((k) => v[k] !== cur[k])) ch[code] = { avant: cur, apres: v };
+  });
+  return { ch, errs };
+}
+function sbShow(res) {
+  const el = $("sbReport");
+  if (res.err) { el.innerHTML = `<p class="err">${esc(res.err)}</p>`; $("sbApply").disabled = true; return; }
+  SBULK = res.ch; const n = Object.keys(res.ch).length;
+  const lab = { mini: "mini", secu: "sécurité", seuil: "seuil", maxi: "maxi" };
+  const lines = Object.entries(res.ch).slice(0, 12).map(([c, { avant, apres }]) => `<li><b>${esc(c)}</b> : ${SB_KEYS.filter((k) => avant[k] !== apres[k]).map((k) => `${lab[k]} ${avant[k]} → ${apres[k]}`).join(", ")}</li>`).join("");
+  el.innerHTML = `<p><b>${n} référence${n > 1 ? "s" : ""} à modifier</b>${res.errs.length ? `, ${res.errs.length} ligne${res.errs.length > 1 ? "s" : ""} ignorée${res.errs.length > 1 ? "s" : ""}` : ""}.</p>` +
+    (lines ? `<ul>${lines}${n > 12 ? `<li>… et ${n - 12} autre${n - 12 > 1 ? "s" : ""}</li>` : ""}</ul>` : "") +
+    (res.errs.length ? `<p class="err">${res.errs.slice(0, 8).map(esc).join("<br />")}${res.errs.length > 8 ? "<br />…" : ""}</p>` : "");
+  $("sbApply").disabled = !n;
+}
+async function sbRead() {
+  const f = $("sbFile").files[0], t = $("sbPaste").value.trim();
+  try {
+    if (f) {
+      if (/\.csv$/i.test(f.name)) sbShow(sbAnalyse(rowsFromText(await f.text())));
+      else { const wb = XLSX.read(await f.arrayBuffer(), { type: "array" }); sbShow(sbAnalyse(XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, raw: false, defval: "" }))); }
+    } else if (t) sbShow(sbAnalyse(rowsFromText(t)));
+    else sbShow({ err: "Choisissez un fichier ou collez des lignes." });
+  } catch (e) { sbShow({ err: "Fichier illisible : " + e.message }); }
+}
+async function sbApply() {
+  if (!SBULK || !canEditPlan()) return;
+  const next = { ...STOCKS.seuils }; Object.entries(SBULK).forEach(([c, { apres }]) => { next[c] = apres; });
+  const n = Object.keys(SBULK).length; $("sbApply").disabled = true;
+  try {
+    if (STOCKS.db) await STOCKS.db.doc("stockcfg/seuils").set({ s: next, at: Date.now() });
+    else { STOCKS.seuils = next; store.set("at1-stock", { seuils: STOCKS.seuils, mvts: STOCKS.mvts }); renderStock(); }
+    $("stBulk").hidden = true; SBULK = null;
+    planMsg(`Seuils mis à jour pour ${n} référence${n > 1 ? "s" : ""}.`);
+  } catch (e) { $("sbReport").insertAdjacentHTML("beforeend", `<p class="err">Enregistrement refusé : ${esc(e.message)}</p>`); $("sbApply").disabled = false; }
+}
+$("stBulkOpen").addEventListener("click", () => { if (!canEditPlan()) return; $("sbReport").innerHTML = ""; $("sbApply").disabled = true; $("sbFile").value = ""; $("sbPaste").value = ""; SBULK = null; $("stBulk").hidden = false; });
+$("sbClose").addEventListener("click", () => ($("stBulk").hidden = true));
+$("sbModel").addEventListener("click", sbModel);
+$("sbRead").addEventListener("click", sbRead);
+$("sbApply").addEventListener("click", sbApply);
 
 /* ---------- Scanner d’emplacement ---------- */
 // trois façons de lire l’étiquette QR d’un emplacement : caméra en direct, photo, ou douchette laser (qui tape le contenu puis Entrée)
@@ -5976,9 +6135,14 @@ function globalView(a = stage.clientWidth / stage.clientHeight) {
   const d = Math.max(R / (th * 0.98), U / (tv * 0.98), 20);
   return [T.clone().add(dir.multiplyScalar(d)), T];
 }
+var RQ = { until: 0, key: "", last: 0 };   // rendu 3D à la demande
+function wake3d() { RQ.until = performance.now() + 1500; }
+["pointerdown", "pointermove", "wheel", "keydown", "click", "touchstart"].forEach((t) => window.addEventListener(t, wake3d, { passive: true, capture: true }));
 function resize() {
+  wake3d();
   const w = stage.clientWidth,
     h = stage.clientHeight;
+  if (!w || !h) return; // maquette masquée (autre page affichée) : rien à recalculer, sinon la caméra devient invalide
   renderer.setSize(w, h, false);
   pcam.aspect = w / h;
   pcam.updateProjectionMatrix();
@@ -6063,6 +6227,19 @@ function loop(now) {
     }
     controls.update();
   } else ocontrols.update();
+  if (!Number.isFinite(pcam.position.x + pcam.position.y + pcam.position.z + controls.target.x + controls.target.y + controls.target.z)) {
+    const [p, t] = globalView(); // garde-fou : caméra invalide remise sur la vue globale
+    anim = null;
+    pcam.position.copy(p);
+    controls.target.copy(t);
+    controls.update();
+  }
+  // rien n’a bougé depuis la dernière image : on la garde (rafraîchie au moins une fois par seconde, ou vingt fois si nuages ou pluie)
+  const key = camera.position.toArray().concat(camera.quaternion.toArray()).map((v) => v.toFixed(4)).join(","),
+    fx = !reduce && (rain.visible || clouds.some((c2) => c2.visible));
+  if (!anim && mode !== "walk" && key === RQ.key && now > RQ.until && now - RQ.last < (fx ? 50 : 1000)) return;
+  RQ.key = key;
+  RQ.last = now;
   sky.position.copy(pcam.position);
   renderer.render(scene, camera);
 }
